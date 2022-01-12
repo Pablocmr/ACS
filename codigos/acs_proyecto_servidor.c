@@ -31,11 +31,20 @@
 /*
  **sigchld_handler: Se encarga de esperar a que el hijo termine su ejecucion
 */
-
 void sigchld_handler(int s)
 {
   while(wait(NULL) > 0);
 }
+
+
+//Función que prepara los argumentos para execvp
+char** separa_comando(char *args);
+
+/*Función que ejecuta el comando recibido en una lista
+  y usa un pipe para cominicar a dos procesos.
+*/
+void ejecutarComando(char** args, int new_fd);
+
 
 int main(int argc, char *argv[])
 {
@@ -168,7 +177,7 @@ int main(int argc, char *argv[])
 
   while(1)
   { 
-    //Se inicializa el tama�o de la estructura sockaddr_in
+    //Se inicializa el tamaño de la estructura sockaddr_in
     sin_size = sizeof(struct sockaddr_in);
 
     /*
@@ -222,24 +231,14 @@ int main(int argc, char *argv[])
           if (send(new_fd, bTermina, strlen(bTermina), 0) == -1)
             perror("Server-send() error lol!");
           printf("Server-Envia: \"terminar\"\n");
+          
         }
         else
         {
-          // Ahora yo capturo del teclado para responder al cliente
-          printf("Escribe un mensaje a enviar\n");
-          char linea1[LINE_MAX]; // podemos usarlo por el fgets
-          fgets(linea1,LINE_MAX,stdin);
-          printf("El mensaje a enviar es: %s", linea1);
-
-          /*
-          **1.  Llamada a funcion send para escribirle al cliente
-          **    Utiliza el fd del cliente, la cadena almacenada y el tamanio de la cadena
-          **2   Compara lo que devuelve la funcion send contra -1 para validar que no haya errores
-          **2.1 Si es igual, llama a funcion perror
-          */
-
-          if (send(new_fd, linea1, strlen(linea1), 0) == -1)
-            perror("Server-send() error lol!");
+          //Se separa el comando en una lista y se ejecuta.
+          char **args= separa_comando(buf);          
+          ejecutarComando(args, new_fd);
+          free(args);
         }
       }while(banderaTermina!=0);
             
@@ -253,7 +252,89 @@ int main(int argc, char *argv[])
     printf("Este es el proceso padre, cierra el descriptor del socket cliente y se regresa a esperar otro cliente\n");
     close(new_fd);
     printf("Server-new socket, new_fd closed successfully...\n");
+    return 0;
   } 
-
   return 0;
+}
+
+//Función que prepara los argumentos para execvp
+char** separa_comando(char *args)
+{
+  //Se quita el enter en caso de tenerlo
+  int tam = strlen(args);
+  if (tam > 0 && args[tam-1] == '\n') 
+    args[--tam] = '\0';
+
+
+	char **listaComando; //Arreglo del comando en palabras
+	char *palabra_i; //El token es el argumento detectado tras un " "
+	int i_argumentos  = 0; //Contador de palabras
+	
+	//Asignación de memoria en el arreglo de argumentos
+	listaComando = malloc(MAXDATASIZE * sizeof(char*));
+	for (int i = 0; i < MAXDATASIZE; i++)
+		listaComando[i] = malloc((MAXDATASIZE + 1) * sizeof(char));
+
+	//Se guardan las palabras en una "lista"
+	while( (palabra_i = strtok_r(args, " ", &args))) 
+  {
+		listaComando[i_argumentos ] = palabra_i;
+		i_argumentos ++;
+	}
+  
+  //Se agrega el NULL que requiere la función execvp
+	listaComando[i_argumentos ] = NULL;
+	
+	return listaComando;
+}
+
+
+
+/*Función que ejecuta el comando recibido en una lista
+  y usa un pipe para cominicar a dos procesos.
+*/
+void ejecutarComando(char** args, int new_fd) 
+{
+  pid_t ch_pid; //Almacena el resultado del fork()
+  int pipe_A[2], tam;//Arreglo para el pipe. Entero para el tamaño.
+  pipe(pipe_A); //Se crea el Pipe con el arreglo definido previamente
+  ch_pid = fork(); //Fork para tener dos procesos.
+
+    if (ch_pid == -1) //Error en el fork()
+    {
+        perror("Error de en fork()");
+        exit(EXIT_FAILURE);
+    }    
+    if (ch_pid) //El padre lee la salida de la ejecución del comando del hijo.
+    {      
+      char exec_result[MAXDATASIZE]; //Arreglo para la salida
+      
+      close(pipe_A[1]); //Cierra modo escritura del padre
+
+      /*Se lee el número de bytes y se añade el fin de cadena al resultado del hijo
+        con read()
+      */
+      if ((tam = read(pipe_A[0], exec_result, sizeof(exec_result))) > 0)
+      {
+        exec_result[tam] = '\0';
+        //Se manda la respuesta al cliente
+        if (send(new_fd, exec_result, strlen(exec_result), 0) == -1)
+          perror("Servidor-Error al enviar resultado del comando\n");
+      }
+    }
+
+    //El hijo ejecutará execvp() con la lista de argumentos
+    else 
+    {
+      close(pipe_A[0]); //Cierra modo lectura del hijo
+      dup2(pipe_A[1], 1);//Se redirige STDOUT a la esritura del padre
+      dup2(pipe_A[1], 2); //Se redirige STDERR a la escritura del padre
+      close(pipe_A[1]); //Cierra modo escritura del hijo
+
+      execvp(args[0], args);
+
+      //En caso de que no se realice correctamente la ejecución
+      perror("Error al ejecutar comando en servidor\n");
+      exit(EXIT_FAILURE);
+    }
 }
