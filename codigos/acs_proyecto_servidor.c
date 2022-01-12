@@ -29,7 +29,7 @@
 #define MAXDATASIZE 300
 
 /*
- **sigchld_handler
+ **sigchld_handler: Se encarga de esperar a que el hijo termine su ejecucion
 */
 
 void sigchld_handler(int s)
@@ -144,6 +144,13 @@ int main(int argc, char *argv[])
   sa.sa_handler = sigchld_handler;
   sigemptyset(&sa.sa_mask);
   sa.sa_flags = SA_RESTART;
+  
+  /*
+   **1. Llamada a funcion sigaction para eliminar a los procesos zombies
+   **2. Compara lo que devuelve sigaction contra -1 para validar que no haya errores
+   **2.1 Si es igual, llama a funcion perror y se sale de la ejecucion
+   **2.2 Si es diferente, la llamada a la funcion sigaction fue exitosa
+  */
 
   if (sigaction(SIGCHLD, &sa, NULL) == -1)
   {
@@ -183,9 +190,15 @@ int main(int argc, char *argv[])
     printf("Server-new socket, new_fd is OK...\n");
     printf("Server: Got connection from %s\n", inet_ntoa(their_addr.sin_addr));
 
+    /*
+     **Se crea un proceso hijo para atender a los clientes
+     **Solo el proceso hijo entra a la estructura condicional
+     **El hijo cierra su sockfd porque no lo necesita
+    */
+
     if (!fork())
-    { // Este es el proceso hijo
-      close(sockfd); // El hijo no necesita este descriptor
+    { 
+      close(sockfd);
 
       char bTermina[] = "terminar\n";
       int banderaTermina;
