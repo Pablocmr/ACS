@@ -4,6 +4,7 @@
  **Grupo:01
  **Alumnos: Martinez Ramirez Pablo Cesar 
             Zacatelco Zenteno Rodrigo Alberto
+ **Codigo del Cliente
 */
 
 #include <stdio.h>
@@ -17,12 +18,14 @@
 #include <sys/socket.h>
 
 /*
- **LINE_MAX:    Numero maximo de bytes a escribir
- **MAXDATASIZE: Numero maximo de bytes a recibir
+ **LINE_MAX:    Numero maximo de bytes para el comando
+ **MAXDATASIZE: Numero maximo de bytes para la respuesta del comando
+ **TERMINAL:    Imprime terminal con color
 */
 
 #define LINE_MAX 200
 #define MAXDATASIZE 1000
+#define TERMINAL "\x1b[32mconsola@ACSpy: $\x1b[0m"
 
 int main(int argc, char *argv[])
 {
@@ -45,7 +48,7 @@ int main(int argc, char *argv[])
 
   if(argc != 3)
   {
-    fprintf(stderr, "Client-Usage: %s hostname_del_servidor\n", argv[0]);
+    fprintf(stderr, TERMINAL"Client-Usage: %s hostname_del_servidor\n", argv[0]);
     exit(1);
   }
 
@@ -62,7 +65,7 @@ int main(int argc, char *argv[])
     perror("gethostbyname()");
     exit(1);
   }
-  //printf("consola@ACSpy: $Client-The remote host is: %s\n", argv[1]);
+  //printf(TERMINAL"Client-The remote host is: %s\n", argv[1]);
 
   /*
    **1. Llamada a funcion atoi para obtener el puerto en numero entero
@@ -74,10 +77,10 @@ int main(int argc, char *argv[])
 
   if((port=atoi(argv[2])) == 0)
   {
-    perror("consola@ACSpy:Client- Not a valid port number");
+    perror("Client- Not a valid port number");
     exit(1);
   }
-  //printf("consola@ACSpy: $Client-The port number is: %s\n", argv[2]);
+  //printf(TERMINAL"Client-The port number is: %s\n", argv[2]);
 
   /*
    **1. Llamada a funcion socket para crear un socket bidieccional, con modo de conexión de flujos de byte
@@ -93,7 +96,7 @@ int main(int argc, char *argv[])
     perror("socket()");
     exit(1);
   }
-  //printf("consola@ACSpy: $Client-The socket() sockfd is OK...\n");
+  //printf(TERMINAL"Client-The socket() sockfd is OK...\n");
 
   /*
    **Inicializar la estructura their_addr para pasarle la IP y el puerto
@@ -107,7 +110,7 @@ int main(int argc, char *argv[])
   their_addr.sin_port = htons(port);
   their_addr.sin_addr = *((struct in_addr *)he->h_addr);
   memset(&(their_addr.sin_zero), '\0', 8);
-  //printf("consola@ACSpy: $Client-The server is using %s and port %d...\n", argv[1], argv[2]);
+  //printf(TERMINAL"Client-The server is using %s and port %d...\n", argv[1], port);
 
   /*
    **1. Llamada a funcion connect
@@ -121,7 +124,7 @@ int main(int argc, char *argv[])
     perror("connect()");
     exit(1);
   }
-  //printf("consola@ACSpy: $Client-The connect() is OK...\n");
+  //printf(TERMINAL"Client-The connect() is OK...\n");
   
   /*
    **Inicia ciclo iterativo una vez se realizo la conexion con el servidor
@@ -136,7 +139,7 @@ int main(int argc, char *argv[])
     char *comm=(char *)malloc(sizeof(char)*LINE_MAX);
     char buf[MAXDATASIZE];
     int numbytesComm, numbytes;
-    printf("consola@ACSpy: $");
+    printf(TERMINAL);
     fgets(comm,LINE_MAX,stdin);
     numbytesComm=strlen(comm);
     if(numbytesComm<1)
@@ -154,7 +157,7 @@ int main(int argc, char *argv[])
       bEnd=0;
       break;
     }
-    //printf("consola@ACSpy: $Client-The command to send is: %s", comm);
+    //printf(TERMINAL"Client-The command to send is: %s", comm);
 
     /*
      **1.  Llamada a funcion send para escribirle al cliente
@@ -177,18 +180,18 @@ int main(int argc, char *argv[])
       perror("recv()");
       exit(1);
     }
-    //printf("consola@ACSpy: $Client-The recv() is OK...\n");
+    //printf(TERMINAL"Client-The recv() is OK...\n");
 
     //Si se recibe respuesta, se trunca el buffer al valor indicado por numbytes
     if (numbytes>0){
       buf[numbytes] = '\0';
-      //printf("consola@ACSpy: $Client-Received: \n%s", buf);
+      //printf(TERMINAL"Client-Received: \n%s", buf);
       printf("%s", buf);
     }
     
   }
   //Cliente cierra su socket y regresa al prompt
-  //printf("consola@ACSpy: $Client-Closing sockfd\n");
+  //printf(TERMINAL"Client-Closing sockfd\n");
   close(sockfd);
   return 0;
 }
