@@ -174,20 +174,19 @@ int main(int argc, char *argv[])
     **3.1 Si es igual, llama a funcion perror y se sale de la ejecucion
     **3.2 Si es diferente, la llamada a la funcion recv fue exitosa
     */
-
     if((numbytes = recv(sockfd, buf, MAXDATASIZE-1, 0)) == -1)
     {
       perror("recv()");
       exit(1);
     }
     //printf(TERMINAL"Client-The recv() is OK...\n");
-
     //Si se recibe respuesta, se trunca el buffer al valor indicado por numbytes
     if (numbytes>0){
       buf[numbytes] = '\0';
       //printf(TERMINAL"Client-Received: \n%s", buf);
-      printf("%s", buf);
+      printf("%s\n", buf);
     }
+    memset(buf, 0, LINE_MAX);
     
   }
   //Cliente cierra su socket y regresa al prompt

@@ -31,14 +31,13 @@
 
 /*
  **sigchld_handler: Se encarga de esperar a que el hijo termine su ejecucion
- **separa_comando: Función que prepara los argumentos para execvp
- **ejecutarComando: Función que ejecuta el comando recibido en una lista
+ **separa_comando: Funcion que prepara los argumentos para execvp
+ **ejecutarComando: Funcion que ejecuta el comando recibido en una lista
     y usa un pipe para cominicar a dos procesos.
 */
 void sigchld_handler(int s);
 char** separa_comando(char *args);
 void ejecutarComando(char** args, int new_fd);
-
 
 int main(int argc, char *argv[])
 {
@@ -48,11 +47,10 @@ int main(int argc, char *argv[])
    **their_addr: Estructura socket de internet del cliente (informacion sobre su direccion)
    **sockfd:     File descriptor para estructura socket servidor (escuchar sobre sock_fd)
    **new_fd:     File descriptor para estructura socket cliente (nuevas conexiones sobre new_fd)
-   **numbytes:   Numero real de bytes leidos
-   **buf: Buffer
-   **sin_size: Tamanio de la estructura sockaddr_in
-   **sa:
-   **yes: 
+   **port:       Puerto a conectarse
+   **numbytes:   Numero maximo de bytes para el comando recibido 
+   **buf:        Cadena para almacenar el comando recibido
+   **sin_size:   Tamanio de la estructura sockaddr_in
   */
 
   int sockfd, new_fd, numbytes, port;  
@@ -107,8 +105,12 @@ int main(int argc, char *argv[])
     printf("Server-socket() sockfd is OK...\n");
   
   /*
-   **Se especifican las opciones a nivel SOCKET (SOL_SOCKET). 
-   **SO_REUSEADDR:Usando bind() se puede reusar la dirección después. 
+   **1. Llamada a funcion setsockopt para controlar el comportamiento del socket
+   **   Se especifican las opciones a nivel SOCKET (SOL_SOCKET). 
+   **   SO_REUSEADDR:Usando bind() se puede reusar la dirección después. 
+   **2. Compara el resultado de setsockopt contra -1 para validar que no haya errores
+   **2.1 Si es igual, llama a funcion perror y se sale de la ejecucion
+   **2.2 Si es diferente, la llamada a setsockopt fue exitosa
   */
 
   if (setsockopt(sockfd,SOL_SOCKET,SO_REUSEADDR,&yes,sizeof(int)) == -1)
@@ -162,16 +164,6 @@ int main(int argc, char *argv[])
     exit(1);
   }
   printf("Server-listen() is OK...Listening...\n");
-
-  /*
-   **sa.sa_handler: Elimina procesos muertos
-   **
-   **
-  */
-
-  sa.sa_handler = sigchld_handler;
-  sigemptyset(&sa.sa_mask);
-  sa.sa_flags = SA_RESTART;
   
   /*
    **1. Llamada a funcion sigaction para eliminar a los procesos zombies
@@ -179,6 +171,10 @@ int main(int argc, char *argv[])
    **2.1 Si es igual, llama a funcion perror y se sale de la ejecucion
    **2.2 Si es diferente, la llamada a la funcion sigaction fue exitosa
   */
+
+  sa.sa_handler = sigchld_handler;
+  sigemptyset(&sa.sa_mask);
+  sa.sa_flags = SA_RESTART;
 
   if (sigaction(SIGCHLD, &sa, NULL) == -1)
   {
@@ -188,12 +184,7 @@ int main(int argc, char *argv[])
   else
     printf("Server-sigaction() is OK...\n");
 
-  /*
-   **Loop principal de accept()
-   **
-   **
-  */
-
+  //Loop principal para aceptar clientes
   while(1)
   { 
     //Se inicializa el tamaño de la estructura sockaddr_in
@@ -215,7 +206,7 @@ int main(int argc, char *argv[])
     else
       printf("Server-accept() is OK...\n");
     
-    printf("Server-new socket, new_fd is OK...\n");
+    printf("Server-New socket, new_fd is OK...\n");
     printf("Server-Got connection from %s\n", inet_ntoa(their_addr.sin_addr));
 
     /*
@@ -232,7 +223,7 @@ int main(int argc, char *argv[])
       int banderaTermina;
       do 
       {
-        // Como el cliente escribe, yo leo
+        //Se lee el comando que escribio el comando
         if((numbytes = recv(new_fd, buf, MAXDATASIZE-1, 0)) == -1)
         {
           perror("recv()");
@@ -250,7 +241,6 @@ int main(int argc, char *argv[])
           if (send(new_fd, bTermina, strlen(bTermina), 0) == -1)
             perror("Server-send() error lol!");
           printf("Server-Sent: \"terminar\"\n");
-          
         }
         else
         {
@@ -271,7 +261,6 @@ int main(int argc, char *argv[])
     printf("Server-Este es el proceso padre, cierra el descriptor del socket cliente y se regresa a esperar otro cliente\n");
     close(new_fd);
     printf("Server-new socket, new_fd closed successfully...\n");
-    return 0;
   } 
   return 0;
 }
@@ -339,7 +328,7 @@ void ejecutarComando(char** args, int new_fd)
       */
       if ((tam = read(pipe_A[0], exec_result, sizeof(exec_result))) > 0)
       {
-        exec_result[tam] = '\0';
+        exec_result[tam-1] = '\0';
         //Se manda la respuesta al cliente
         if (send(new_fd, exec_result, strlen(exec_result), 0) == -1)
           perror("Servidor-Error al enviar resultado del comando\n");
