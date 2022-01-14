@@ -1,7 +1,10 @@
 /*
- **Codigo del Servidor 
- **Autores: Martínez Ramírez Pablo César
- **         Zacatelco Zenteno Rodrigo Alberto
+ **UNAM FI
+ **Arquitectura Cliente Servidor 
+ **Grupo:01
+ **Alumnos: Martinez Ramirez Pablo Cesar
+            Zacatelco Zenteno Rodrigo Alberto
+ **Codigo del Servidor
 */
 
 #include <stdio.h>
@@ -17,51 +20,40 @@
 #include <signal.h>
 
 /*
- **MYPORT: Puerto al que conectan los usuarios
- **BACKLOG: Numero de conexiones pendientes se mantienen en cola
- **LINE_MAX: 
- **MAXDATASIZE: Numero maximo de bytes que se pueden obtener de respuesta
+ **LINE_MAX:    Numero maximo de bytes para el comando
+ **MAXDATASIZE: Numero maximo de bytes para la respuesta del comando
+ **BACKLOG:     Numero de conexiones pendientes se mantienen en cola
 */
 
-#define MYPORT 3490
 #define BACKLOG 100     
 #define LINE_MAX 200
-#define MAXDATASIZE 300
+#define MAXDATASIZE 1000
 
 /*
- **sigchld_handler
+ **sigchld_handler: Se encarga de esperar a que el hijo termine su ejecucion
+ **separa_comando: Funcion que prepara los argumentos para execvp
+ **ejecutarComando: Funcion que ejecuta el comando recibido en una lista
+    y usa un pipe para cominicar a dos procesos.
 */
-void sigchld_handler(int s)
-{
-  while(wait(NULL) > 0);
-}
-
-
-//Función que prepara los argumentos para execvp
+void sigchld_handler(int s);
 char** separa_comando(char *args);
-
-/*Función que ejecuta el comando recibido en una lista
-  y usa un pipe para cominicar a dos procesos.
-*/
 void ejecutarComando(char** args, int new_fd);
-
 
 int main(int argc, char *argv[])
 {
 
   /*
-   **my_addr: Estructura socket de internet del servidor (informacion sobre mi direccion)
+   **my_addr:    Estructura socket de internet del servidor (informacion sobre mi direccion)
    **their_addr: Estructura socket de internet del cliente (informacion sobre su direccion)
-   **sockfd: File descriptor para estructura socket servidor (escuchar sobre sock_fd)
-   **new_fd: File descriptor para estructura socket cliente (nuevas conexiones sobre new_fd)
-   **numbytes: Numero real de bytes leidos
-   **buf: Buffer
-   **sin_size: Tamanio de la estructura sockaddr_in
-   **sa:
-   **yes: 
+   **sockfd:     File descriptor para estructura socket servidor (escuchar sobre sock_fd)
+   **new_fd:     File descriptor para estructura socket cliente (nuevas conexiones sobre new_fd)
+   **port:       Puerto a conectarse
+   **numbytes:   Numero maximo de bytes para el comando recibido 
+   **buf:        Cadena para almacenar el comando recibido
+   **sin_size:   Tamanio de la estructura sockaddr_in
   */
 
-  int sockfd, new_fd, numbytes;  
+  int sockfd, new_fd, numbytes, port;  
   char buf[MAXDATASIZE];
   struct sockaddr_in my_addr; 
   struct sockaddr_in their_addr; 
@@ -70,17 +62,40 @@ int main(int argc, char *argv[])
   int yes=1;
 
   /*
-   **1. Llamada a funcion socket
-   **2. Lo que devuelve la funcion socket se asigna a la variable sockfd
-   **3. Compara sockfd contra -1 para validar que no haya errores
-   **3.1 Si es igual, llama a funcion perror y se sale de la ejecucion
-   **3.2 Si es diferente, la llamada a la funcion socket fue exitosa
+   **Servidor ocupa 2 argumentos: nombre del ejecutable y puerto abierto. 
+   **Si no son 2 argumentos, se sale de la ejecución
   */
 
+  if(argc != 2)
+  {
+    perror("Server-wrong number of arguments");
+    exit(1);
+  }
+
   /*
-  Se crea un socket bidieccional, con modo de conexión de flujos de byte,
-  puede proporcionar un mecanismo de transmisión para datos fuera de banda.
+   **1. Llamada a funcion atoi para obtener el puerto en numero entero
+   **2. Resultado de atoio se asigna a port
+   **3. Compara he contra cero para validar que no haya errores
+   **3.1 Si es igual, llama a funcion perror y se sale de la ejecucion
+   **3.2 Si es diferente, la llamada a atoi fue exitosa
   */
+
+  if((port=atoi(argv[1])) == 0)
+  {
+    perror("Server- Not a valid port number");
+    exit(1);
+  }
+  //printf(TERMINAL"Client-The port number is: %s\n", argv[2]);
+
+  /*
+   **1. Llamada a funcion socket para crear un socket bidieccional, con modo de conexión de flujos de byte
+   **   Puede proporcionar un mecanismo de transmisión para datos fuera de banda.
+   **2. Resultado de socket se asigna a sockfd
+   **3. Compara sockfd contra -1 para validar que no haya errores
+   **3.1 Si es igual, llama a funcion perror y se sale de la ejecucion
+   **3.2 Si es diferente, la llamada a socket fue exitosa
+  */
+
   if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
   {
     perror("Server-socket() error lol!");
@@ -88,10 +103,16 @@ int main(int argc, char *argv[])
   }
   else
     printf("Server-socket() sockfd is OK...\n");
+  
   /*
-  Se especifican las opciones a nivel SOCKET (SOL_SOCKET). 
-  SO_REUSEADDR:Usando bind() se puede reusar la dirección después. 
+   **1. Llamada a funcion setsockopt para controlar el comportamiento del socket
+   **   Se especifican las opciones a nivel SOCKET (SOL_SOCKET). 
+   **   SO_REUSEADDR:Usando bind() se puede reusar la dirección después. 
+   **2. Compara el resultado de setsockopt contra -1 para validar que no haya errores
+   **2.1 Si es igual, llama a funcion perror y se sale de la ejecucion
+   **2.2 Si es diferente, la llamada a setsockopt fue exitosa
   */
+
   if (setsockopt(sockfd,SOL_SOCKET,SO_REUSEADDR,&yes,sizeof(int)) == -1)
   {
     perror("Server-setsockopt() error lol!");
@@ -102,18 +123,18 @@ int main(int argc, char *argv[])
   
   /*
    **Inicializar la estructura my_addr para pasarle la IP y el puerto
-   **my_addr.sin_family: Socket TCP/IP (Ordenación de bytes de la máquina) 
-   **my_addr.sin_port: Numero de Puerto (short, Ordenación de bytes de la red)
+   **my_addr.sin_family:      Socket TCP/IP (Ordenación de bytes de la máquina) 
+   **my_addr.sin_port:        Numero de Puerto (short, Ordenación de bytes de la red)
    **my_addr.sin_addr.s_addr: Direccion IP (Rellenar con mi dirección IP)
-   **INADDR_ANY: indica que puede utilizar cualquiera de las interfaces de red del servidor
-   **memset: (Poner a cero el resto de la estructura)
+   **INADDR_ANY:              Cualquiera de las interfaces de red del servidor puede utilizarse
+   **Con la funcion memset se pone a cero el resto de la estructura
   */
 
   my_addr.sin_family = AF_INET;          
-  my_addr.sin_port = htons(MYPORT);      
+  my_addr.sin_port = htons(port);      
   my_addr.sin_addr.s_addr = INADDR_ANY; 
-  printf("Server-Using %s and port %d...\n", inet_ntoa(my_addr.sin_addr), MYPORT);
   memset(&(my_addr.sin_zero), '\0', 8);
+  printf("Server-Using %s and port %d...\n", inet_ntoa(my_addr.sin_addr), port);
 
   /*
    **1. Llamada a funcion bind para ligar el socket a una IP y un puerto
@@ -143,11 +164,12 @@ int main(int argc, char *argv[])
     exit(1);
   }
   printf("Server-listen() is OK...Listening...\n");
-
+  
   /*
-   **sa.sa_handler: Elimina procesos muertos
-   **
-   **
+   **1. Llamada a funcion sigaction para eliminar a los procesos zombies
+   **2. Compara lo que devuelve sigaction contra -1 para validar que no haya errores
+   **2.1 Si es igual, llama a funcion perror y se sale de la ejecucion
+   **2.2 Si es diferente, la llamada a la funcion sigaction fue exitosa
   */
 
   sa.sa_handler = sigchld_handler;
@@ -162,12 +184,7 @@ int main(int argc, char *argv[])
   else
     printf("Server-sigaction() is OK...\n");
 
-  /*
-   **Loop principal de accept()
-   **
-   **
-  */
-
+  //Loop principal para aceptar clientes
   while(1)
   { 
     //Se inicializa el tamaño de la estructura sockaddr_in
@@ -189,27 +206,33 @@ int main(int argc, char *argv[])
     else
       printf("Server-accept() is OK...\n");
     
-    printf("Server-new socket, new_fd is OK...\n");
-    printf("Server: Got connection from %s\n", inet_ntoa(their_addr.sin_addr));
+    printf("Server-New socket, new_fd is OK...\n");
+    printf("Server-Got connection from %s\n", inet_ntoa(their_addr.sin_addr));
+
+    /*
+     **Se crea un proceso hijo para atender a los clientes
+     **Solo el proceso hijo entra a la estructura condicional
+     **El hijo cierra su sockfd porque no lo necesita
+    */
 
     if (!fork())
-    { // Este es el proceso hijo
-      close(sockfd); // El hijo no necesita este descriptor
+    { 
+      close(sockfd);
 
       char bTermina[] = "terminar\n";
       int banderaTermina;
       do 
       {
-        // Como el cliente escribe, yo leo
+        //Se lee el comando que escribio el comando
         if((numbytes = recv(new_fd, buf, MAXDATASIZE-1, 0)) == -1)
         {
           perror("recv()");
           exit(1);
         }
         else
-          printf("Servidor-The recv() is OK...\n");
+          printf("Server-The recv() is OK...\n");
         buf[numbytes] = '\0';
-        printf("Servidor-Comando-Recibido: %s", buf);
+        printf("Server-Received command: %s", buf);
 
         //Si recibe "termina", envia "termina" para terminar
         banderaTermina=strcmp(bTermina, buf);
@@ -217,8 +240,7 @@ int main(int argc, char *argv[])
         {
           if (send(new_fd, bTermina, strlen(bTermina), 0) == -1)
             perror("Server-send() error lol!");
-          printf("Server-Envia: \"terminar\"\n");
-          
+          printf("Server-Sent: \"terminar\"\n");
         }
         else
         {
@@ -230,18 +252,23 @@ int main(int argc, char *argv[])
       }while(banderaTermina!=0);
             
       //Servidor hijo cierra socket cliente y termina su ejecucion
-      printf("Se recibió el comando de terminar\n");
+      printf("Server-Se recibió el comando de terminar\n");
       close(new_fd);
       exit(0);
     }
 
     //Servidor padre cierra el descriptor del cliente porque no lo necesita
-    printf("Este es el proceso padre, cierra el descriptor del socket cliente y se regresa a esperar otro cliente\n");
+    printf("Server-Este es el proceso padre, cierra el descriptor del socket cliente y se regresa a esperar otro cliente\n");
     close(new_fd);
     printf("Server-new socket, new_fd closed successfully...\n");
-    return 0;
   } 
   return 0;
+}
+
+//Funcion que se encarga de esperar a que el hijo termine su ejecucion
+void sigchld_handler(int s)
+{
+  while(wait(NULL) > 0);
 }
 
 //Función que prepara los argumentos para execvp
@@ -275,8 +302,6 @@ char** separa_comando(char *args)
 	return listaComando;
 }
 
-
-
 /*Función que ejecuta el comando recibido en una lista
   y usa un pipe para cominicar a dos procesos.
 */
@@ -303,7 +328,7 @@ void ejecutarComando(char** args, int new_fd)
       */
       if ((tam = read(pipe_A[0], exec_result, sizeof(exec_result))) > 0)
       {
-        exec_result[tam] = '\0';
+        exec_result[tam-1] = '\0';
         //Se manda la respuesta al cliente
         if (send(new_fd, exec_result, strlen(exec_result), 0) == -1)
           perror("Servidor-Error al enviar resultado del comando\n");
